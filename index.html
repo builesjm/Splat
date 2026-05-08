@@ -16,87 +16,75 @@
       height: 100vh;
       background: #1a1a1a;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      display: flex;
-      flex-direction: column;
       overflow: hidden;
     }
 
     #canvas {
-      flex: 1;
+      display: block;
       width: 100%;
       height: 100%;
-      display: block;
     }
 
-    .loading {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      color: #fff;
-      text-align: center;
+    .overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
       pointer-events: none;
       z-index: 10;
     }
 
-    .loading h2 {
-      font-size: 24px;
-      margin-bottom: 12px;
-    }
-
-    .loading p {
-      font-size: 14px;
-      opacity: 0.7;
-    }
-
-    .spinner {
-      border: 3px solid rgba(255, 255, 255, 0.2);
-      border-top: 3px solid #fff;
-      border-radius: 50%;
-      width: 40px;
-      height: 40px;
-      animation: spin 1s linear infinite;
-      margin: 0 auto 16px;
-    }
-
-    @keyframes spin {
-      to {
-        transform: rotate(360deg);
-      }
-    }
-
-    .error {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      background: rgba(220, 38, 38, 0.9);
+    .message {
+      background: rgba(0, 0, 0, 0.8);
       color: #fff;
-      padding: 24px;
+      padding: 24px 32px;
       border-radius: 8px;
-      max-width: 600px;
       text-align: center;
-      z-index: 10;
-      font-size: 14px;
-      line-height: 1.5;
+      font-size: 16px;
+      line-height: 1.6;
     }
 
-    .error h2 {
+    .message h2 {
       margin-bottom: 12px;
       font-size: 20px;
     }
 
+    .loading-spinner {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 3px solid rgba(255, 255, 255, 0.3);
+      border-top: 3px solid #fff;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-right: 12px;
+      vertical-align: middle;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .error {
+      background: rgba(220, 38, 38, 0.9);
+    }
+
     .controls {
-      position: absolute;
+      position: fixed;
       bottom: 20px;
       right: 20px;
-      background: rgba(0, 0, 0, 0.6);
+      background: rgba(0, 0, 0, 0.7);
       color: #fff;
       padding: 12px 16px;
       border-radius: 6px;
       font-size: 12px;
       line-height: 1.6;
       z-index: 5;
+      pointer-events: auto;
     }
 
     .controls strong {
@@ -108,159 +96,202 @@
 <body>
   <canvas id="canvas"></canvas>
   
-  <div id="loading" class="loading">
-    <div class="spinner"></div>
-    <h2>Loading Splat...</h2>
-    <p>Fetching and rendering your 3D model</p>
+  <div class="overlay">
+    <div id="message" class="message">
+      <div class="loading-spinner"></div>
+      <h2>Loading Splat...</h2>
+      <p id="message-text">Initializing viewer</p>
+    </div>
   </div>
 
-  <div id="error" class="error" style="display: none;">
-    <h2>Error Loading Splat</h2>
-    <p id="error-message"></p>
-  </div>
-
-  <div class="controls">
+  <div class="controls" style="display: none;">
     <strong>Controls</strong>
     <div>🖱️ Drag to rotate</div>
     <div>🔄 Scroll to zoom</div>
   </div>
 
-  <script src="https://unpkg.com/three@r128/build/three.min.js"></script>
-
   <script>
-    function init() {
+    async function init() {
       const canvas = document.getElementById('canvas');
-      const loadingEl = document.getElementById('loading');
-      const errorEl = document.getElementById('error');
-      const errorMsg = document.getElementById('error-message');
-
-      // Check if THREE is available
-      if (typeof THREE === 'undefined') {
-        errorMsg.textContent = 'Failed to load Three.js library from CDN';
-        loadingEl.style.display = 'none';
-        errorEl.style.display = 'block';
-        return;
-      }
+      const messageEl = document.getElementById('message');
+      const messageText = document.getElementById('message-text');
 
       try {
-        // Get the URL from query parameters
+        // Get splat URL from query params
         const params = new URLSearchParams(window.location.search);
         const splatUrl = params.get('url');
 
         if (!splatUrl) {
-          throw new Error('No splat URL provided. Use ?url=<your-splat-url>');
+          throw new Error('No splat URL provided. Use ?url=<encoded-url>');
         }
 
         console.log('Splat URL:', splatUrl);
 
-        // Setup scene
-        const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x1a1a1a);
+        // Get WebGL context
+        const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+        if (!gl) {
+          throw new Error('WebGL not supported in this browser');
+        }
 
-        const camera = new THREE.PerspectiveCamera(
-          75, 
-          window.innerWidth / window.innerHeight, 
-          0.1, 
-          1000
-        );
-        camera.position.z = 2;
+        // Resize canvas
+        function resizeCanvas() {
+          canvas.width = window.innerWidth;
+          canvas.height = window.innerHeight;
+          gl.viewport(0, 0, canvas.width, canvas.height);
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
 
-        const renderer = new THREE.WebGLRenderer({ 
-          canvas: canvas, 
-          antialias: true,
-          alpha: false 
-        });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(window.devicePixelRatio || 1);
+        // Create simple shader program
+        const vertexShaderSource = `
+          attribute vec3 position;
+          attribute vec3 color;
+          uniform mat4 projectionMatrix;
+          uniform mat4 viewMatrix;
+          varying vec3 vColor;
 
-        // Create a simple test geometry first
-        const geometry = new THREE.BufferGeometry();
+          void main() {
+            gl_Position = projectionMatrix * viewMatrix * vec4(position, 1.0);
+            gl_PointSize = 2.0;
+            vColor = color;
+          }
+        `;
+
+        const fragmentShaderSource = `
+          precision mediump float;
+          varying vec3 vColor;
+
+          void main() {
+            gl_FragColor = vec4(vColor, 1.0);
+          }
+        `;
+
+        function compileShader(source, type) {
+          const shader = gl.createShader(type);
+          gl.shaderSource(shader, source);
+          gl.compileShader(shader);
+          if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+            console.error('Shader error:', gl.getShaderInfoLog(shader));
+            throw new Error('Failed to compile shader');
+          }
+          return shader;
+        }
+
+        const vertexShader = compileShader(vertexShaderSource, gl.VERTEX_SHADER);
+        const fragmentShader = compileShader(fragmentShaderSource, gl.FRAGMENT_SHADER);
+
+        const program = gl.createProgram();
+        gl.attachShader(program, vertexShader);
+        gl.attachShader(program, fragmentShader);
+        gl.linkProgram(program);
+
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+          throw new Error('Failed to link shader program');
+        }
+
+        gl.useProgram(program);
+
+        // Create a simple triangle geometry
         const positions = new Float32Array([
           -0.5, -0.5, 0,
            0.5, -0.5, 0,
            0, 0.5, 0
         ]);
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        
-        const material = new THREE.PointsMaterial({ 
-          color: 0x00ff00,
-          size: 0.1,
-          sizeAttenuation: true
-        });
 
-        const points = new THREE.Points(geometry, material);
-        scene.add(points);
+        const colors = new Float32Array([
+          0, 1, 0,  // green
+          0, 1, 0,
+          0, 1, 0
+        ]);
 
-        // Fetch splat file in background
-        fetch(splatUrl)
-          .then(response => {
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            return response.arrayBuffer();
-          })
-          .then(arrayBuffer => {
-            console.log('Splat file loaded:', (arrayBuffer.byteLength / 1024 / 1024).toFixed(2), 'MB');
-          })
-          .catch(error => {
-            console.error('Failed to fetch splat:', error.message);
-          });
+        const positionBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
 
-        // Mouse controls
-        let isDragging = false;
-        let previousMousePosition = { x: 0, y: 0 };
+        const positionAttrib = gl.getAttribLocation(program, 'position');
+        gl.enableVertexAttribArray(positionAttrib);
+        gl.vertexAttribPointer(positionAttrib, 3, gl.FLOAT, false, 0, 0);
 
-        canvas.addEventListener('mousedown', (e) => {
-          isDragging = true;
-          previousMousePosition = { x: e.clientX, y: e.clientY };
-        });
+        const colorBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, colors, gl.STATIC_DRAW);
 
-        canvas.addEventListener('mousemove', (e) => {
-          if (isDragging) {
-            const deltaX = e.clientX - previousMousePosition.x;
-            const deltaY = e.clientY - previousMousePosition.y;
+        const colorAttrib = gl.getAttribLocation(program, 'color');
+        gl.enableVertexAttribArray(colorAttrib);
+        gl.vertexAttribPointer(colorAttrib, 3, gl.FLOAT, false, 0, 0);
 
-            points.rotation.y += deltaX * 0.01;
-            points.rotation.x += deltaY * 0.01;
-
-            previousMousePosition = { x: e.clientX, y: e.clientY };
-          }
-        });
-
-        canvas.addEventListener('mouseup', () => {
-          isDragging = false;
-        });
-
-        canvas.addEventListener('wheel', (e) => {
-          e.preventDefault();
-          camera.position.z += e.deltaY * 0.001;
-          camera.position.z = Math.max(0.5, Math.min(10, camera.position.z));
-        });
-
-        // Handle window resize
-        window.addEventListener('resize', () => {
-          camera.aspect = window.innerWidth / window.innerHeight;
-          camera.updateProjectionMatrix();
-          renderer.setSize(window.innerWidth, window.innerHeight);
-        });
-
-        // Animation loop
-        function animate() {
-          requestAnimationFrame(animate);
-          renderer.render(scene, camera);
+        // Simple matrix utilities
+        function identity() {
+          return new Float32Array([
+            1, 0, 0, 0,
+            0, 1, 0, 0,
+            0, 0, 1, 0,
+            0, 0, 0, 1
+          ]);
         }
 
-        loadingEl.style.display = 'none';
-        console.log('Splat viewer initialized');
-        animate();
+        function perspective(fov, aspect, near, far) {
+          const f = 1.0 / Math.tan(fov / 2.0);
+          const nf = 1.0 / (near - far);
+          return new Float32Array([
+            f / aspect, 0, 0, 0,
+            0, f, 0, 0,
+            0, 0, (far + near) * nf, -1,
+            0, 0, (2 * far * near) * nf, 0
+          ]);
+        }
+
+        const projMat = perspective(Math.PI / 4, canvas.width / canvas.height, 0.1, 100);
+        const viewMat = identity();
+
+        const projLoc = gl.getUniformLocation(program, 'projectionMatrix');
+        const viewLoc = gl.getUniformLocation(program, 'viewMatrix');
+
+        gl.uniformMatrix4fv(projLoc, false, projMat);
+        gl.uniformMatrix4fv(viewLoc, false, viewMat);
+
+        // Fetch splat file
+        messageText.textContent = 'Fetching splat file...';
+        
+        const response = await fetch(splatUrl);
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const arrayBuffer = await response.arrayBuffer();
+        const sizeMB = (arrayBuffer.byteLength / 1024 / 1024).toFixed(2);
+        console.log('Splat file loaded:', sizeMB, 'MB');
+
+        messageText.textContent = `Loaded ${sizeMB} MB - Ready!`;
+        
+        // Start rendering
+        gl.clearColor(0.1, 0.1, 0.1, 1.0);
+        gl.enable(gl.DEPTH_TEST);
+
+        function render() {
+          gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+          gl.drawArrays(gl.TRIANGLES, 0, 3);
+          requestAnimationFrame(render);
+        }
+
+        // Hide message after a short delay
+        setTimeout(() => {
+          messageEl.style.display = 'none';
+        }, 2000);
+
+        render();
 
       } catch (error) {
         console.error('Error:', error);
-        loadingEl.style.display = 'none';
-        errorEl.style.display = 'block';
-        errorMsg.textContent = error.message || 'Unknown error occurred';
+        messageEl.classList.add('error');
+        messageEl.innerHTML = `
+          <h2>Error</h2>
+          <p>${error.message}</p>
+        `;
       }
     }
 
-    // Call init after a short delay to ensure THREE loads
+    // Start when page loads
     window.addEventListener('load', init);
   </script>
 </body>
