@@ -129,7 +129,7 @@
     <div>Right-click drag to pan</div>
   </div>
 
-  <script async src="https://cdn.jsdelivr.net/npm/gsplat@1.0.1/dist/gsplat.umd.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/splat@1.1.0/build/splat.min.js"></script>
   <script>
     async function init() {
       const canvas = document.getElementById('canvas');
@@ -146,29 +146,30 @@
           throw new Error('No splat URL provided. Use ?url=<your-splat-url>');
         }
 
-        // Wait for gsplat library to load
-        if (typeof window.gsplat === 'undefined') {
-          // Wait a bit for the script to load
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          if (typeof window.gsplat === 'undefined') {
-            throw new Error('Failed to load gsplat library');
-          }
+        // Wait for splat library to load
+        let retries = 0;
+        while (typeof window.Splat === 'undefined' && retries < 20) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+          retries++;
         }
 
-        const { Viewer } = window.gsplat;
+        if (typeof window.Splat === 'undefined') {
+          throw new Error('Failed to load splat library');
+        }
 
-        // Create viewer
+        const { Viewer } = window.Splat;
+
+        // Create viewer instance
+        console.log('Creating viewer...');
         const viewer = new Viewer({
-          canvas,
-          fps: 60,
-          shaders: {
-            colorSpace: 'srgb',
-          },
+          canvas: canvas,
+          antialias: true,
+          alpha: true,
         });
 
         // Load the splat file
         console.log('Loading splat from:', splatUrl);
-        const scene = await viewer.addScene(splatUrl);
+        await viewer.loadFile(splatUrl);
 
         loadingEl.style.display = 'none';
         console.log('Splat loaded successfully');
