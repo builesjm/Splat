@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gaussian Splat Viewer</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      width: 100%;
+      height: 100vh;
+      background: #1a1a1a;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    #canvas {
+      flex: 1;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .loading {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: #fff;
+      text-align: center;
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    .loading h2 {
+      font-size: 24px;
+      margin-bottom: 12px;
+    }
+
+    .loading p {
+      font-size: 14px;
+      opacity: 0.7;
+    }
+
+    .spinner {
+      border: 3px solid rgba(255, 255, 255, 0.2);
+      border-top: 3px solid #fff;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 16px;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    .error {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(220, 38, 38, 0.9);
+      color: #fff;
+      padding: 24px;
+      border-radius: 8px;
+      max-width: 500px;
+      text-align: center;
+      z-index: 10;
+    }
+
+    .error h2 {
+      margin-bottom: 12px;
+      font-size: 20px;
+    }
+
+    .error p {
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .controls {
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      background: rgba(0, 0, 0, 0.6);
+      color: #fff;
+      padding: 12px 16px;
+      border-radius: 6px;
+      font-size: 12px;
+      line-height: 1.6;
+      z-index: 5;
+    }
+
+    .controls strong {
+      display: block;
+      margin-bottom: 8px;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  
+  <div id="loading" class="loading">
+    <div class="spinner"></div>
+    <h2>Loading Splat...</h2>
+    <p>Fetching and rendering your 3D model</p>
+  </div>
+
+  <div id="error" class="error" style="display: none;">
+    <h2>Error Loading Splat</h2>
+    <p id="error-message"></p>
+  </div>
+
+  <div class="controls">
+    <strong>Controls</strong>
+    <div>🖱️ Drag to rotate</div>
+    <div>🔄 Scroll to zoom</div>
+    <div>Right-click drag to pan</div>
+  </div>
+
+  <script async src="https://cdn.jsdelivr.net/npm/gsplat@1.0.1/dist/gsplat.umd.js"></script>
+  <script>
+    async function init() {
+      const canvas = document.getElementById('canvas');
+      const loadingEl = document.getElementById('loading');
+      const errorEl = document.getElementById('error');
+      const errorMsg = document.getElementById('error-message');
+
+      try {
+        // Get the URL from query parameters
+        const params = new URLSearchParams(window.location.search);
+        const splatUrl = params.get('url');
+
+        if (!splatUrl) {
+          throw new Error('No splat URL provided. Use ?url=<your-splat-url>');
+        }
+
+        // Wait for gsplat library to load
+        if (typeof window.gsplat === 'undefined') {
+          // Wait a bit for the script to load
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          if (typeof window.gsplat === 'undefined') {
+            throw new Error('Failed to load gsplat library');
+          }
+        }
+
+        const { Viewer } = window.gsplat;
+
+        // Create viewer
+        const viewer = new Viewer({
+          canvas,
+          fps: 60,
+          shaders: {
+            colorSpace: 'srgb',
+          },
+        });
+
+        // Load the splat file
+        console.log('Loading splat from:', splatUrl);
+        const scene = await viewer.addScene(splatUrl);
+
+        loadingEl.style.display = 'none';
+        console.log('Splat loaded successfully');
+
+      } catch (error) {
+        console.error('Error:', error);
+        loadingEl.style.display = 'none';
+        errorEl.style.display = 'block';
+        errorMsg.textContent = error.message || 'Unknown error occurred';
+      }
+    }
+
+    // Start initialization when DOM is ready
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', init);
+    } else {
+      init();
+    }
+  </script>
+</body>
+</html>
