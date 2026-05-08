@@ -36,6 +36,7 @@
       justify-content: center;
       pointer-events: none;
       z-index: 10;
+      background: rgba(26, 26, 26, 0.9);
     }
 
     .message {
@@ -71,10 +72,6 @@
       to { transform: rotate(360deg); }
     }
 
-    .error {
-      background: rgba(220, 38, 38, 0.9);
-    }
-
     .success {
       background: rgba(34, 197, 94, 0.9);
     }
@@ -104,7 +101,7 @@
 <body>
   <canvas id="canvas"></canvas>
   
-  <div class="overlay">
+  <div class="overlay" id="overlay">
     <div id="message" class="message">
       <div class="loading-spinner"></div>
       <h2>Loading Splat...</h2>
@@ -116,7 +113,6 @@
     <strong>Controls</strong>
     <div>🖱️ Drag to rotate</div>
     <div>🔄 Scroll to zoom</div>
-    <div>Right-click drag to pan</div>
   </div>
 
   <script>
@@ -124,22 +120,18 @@
       const canvas = document.getElementById('canvas');
       const messageEl = document.getElementById('message');
       const messageText = document.getElementById('message-text');
+      const overlay = document.getElementById('overlay');
 
-      // Presigned URL (valid for 2 hours from generation)
       const splatUrl = 'https://eclipse-splat-models.s3.us-east-2.amazonaws.com/ACOPOS_Full.splat?response-content-disposition=inline&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Security-Token=IQoJb3JpZ2luX2VjEAoaCXVzLWVhc3QtMiJHMEUCIQCIA40DJfAigQWihi8v1fVjiYe17F%2FSSspQkrZxBTjB9gIgO5OgpBKuE08CXkC%2BTjsj2PL4oDWXXpsi9gKSdT1KdR8qggMI1P%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FARAAGgw0OTc1NTkyNDk5NTAiDGVU92f7bDR60IHWCirWAowVx2epnTcQaGhxTUOFngJPi2heOCUWSmMabIhlhwAmKUXbV0pt%2BpgYjBwbB8X944Vbm6qW2vFjsDccaMsHUFFWWEtO4fCC6lIAUI3O%2FxZljc12z%2BqfziWjKwF83tuRIEVC4tkQR4spU1IijeFimeKVM%2FxJjRlz26hRH%2B7O%2FZ%2BGW806%2B%2BOPseGbf9QjcBdjxNpL9aNTV9CEXekEdwmgp5iUoLKmyrusyACKQQTwBimQTdwphXEA4SUclAAY11K7wo%2BFqaiIbL9CkbiJqFO45IPN8P5gJK0%2FmP5gF1c3CqGfGPEpVe5I6NRl%2BN1q4%2BuPc%2Bl6vA4chti45va3HCRXUouGoMfvg9sA49rYLYFrUAcEOUMlIc90GfJpvoqxxvcMQ8MOytD%2FNs6l%2F0Jqgiv197drjLAlS3LeioE6k7kc%2B4U2kb8s2T6vNzGeHdlWMEATZHx%2FzxashTCFuPjPBjqPAhDMjY%2B7YpIe6gBZKUGKU%2FyEMs1IEWciUDLROl8juMwptQi%2BQ%2FP8r9R2kq%2Fpi%2FLmsICRhgHXcCpXaZTh1K0WQXsEN0NvKWQE5APfWajSz19E2%2Bg2ppgBKzK3s0lUOA363ByT8xOG92Ic3q%2BiCOn4lRDOydNhY2cmsMMbVZqtan6GniYpLAi2TSJY3ojv56e%2B%2FazVGnsQJ4Kdamm%2BSzboGwxxFbYgh4nlyoO3HzPSSt%2BHoCy%2Bqi2ptKyFb2MAlVcg9pLiuAl0edOV%2FSYX9rDWpyR51C2xeBl662LsIyBER%2BHc266aVW9UQW61S2RpYt7r2kIm8XqEaRjeqH%2FLVT6MtqK9tLGwOjBAPuAJwK9GeDM%3D&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=ASIAXHWGXUQPNZL7EG4J%2F20260508%2Fus-east-2%2Fs3%2Faws4_request&X-Amz-Date=20260508T182543Z&X-Amz-Expires=7200&X-Amz-SignedHeaders=host&X-Amz-Signature=7f000d243005a6d54910d20341387c3185be1acb71652a1e647f82fc80abcc33';
 
       try {
         console.log('Initializing splat viewer...');
 
-        // Get WebGL context
         const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
-        if (!gl) {
-          throw new Error('WebGL not supported in this browser');
-        }
+        if (!gl) throw new Error('WebGL not supported');
 
         console.log('WebGL context created');
 
-        // Resize canvas
         function resizeCanvas() {
           canvas.width = window.innerWidth;
           canvas.height = window.innerHeight;
@@ -148,151 +140,109 @@
         resizeCanvas();
         window.addEventListener('resize', resizeCanvas);
 
-        // Create shader program
-        const vertexShaderSource = `
+        // Simple vertex shader
+        const vsSource = `
           attribute vec3 position;
           attribute vec3 color;
-          uniform mat4 projectionMatrix;
-          uniform mat4 viewMatrix;
-          uniform mat4 modelMatrix;
+          uniform mat4 uMatrix;
           varying vec3 vColor;
-
+          
           void main() {
-            gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(position, 1.0);
-            gl_PointSize = 3.0;
+            gl_Position = uMatrix * vec4(position, 1.0);
+            gl_PointSize = 4.0;
             vColor = color;
           }
         `;
 
-        const fragmentShaderSource = `
-          precision mediump float;
+        // Simple fragment shader
+        const fsSource = `
+          precision lowp float;
           varying vec3 vColor;
-
+          
           void main() {
-            float dist = length(gl_PointCoord - vec2(0.5, 0.5));
-            if (dist > 0.5) discard;
             gl_FragColor = vec4(vColor, 1.0);
           }
         `;
 
-        function compileShader(source, type) {
+        function createShader(source, type) {
           const shader = gl.createShader(type);
           gl.shaderSource(shader, source);
           gl.compileShader(shader);
           if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-            throw new Error('Shader compile error: ' + gl.getShaderInfoLog(shader));
+            console.error('Shader error:', gl.getShaderInfoLog(shader));
+            throw new Error('Shader compilation failed');
           }
           return shader;
         }
 
         const program = gl.createProgram();
-        gl.attachShader(program, compileShader(vertexShaderSource, gl.VERTEX_SHADER));
-        gl.attachShader(program, compileShader(fragmentShaderSource, gl.FRAGMENT_SHADER));
+        gl.attachShader(program, createShader(vsSource, gl.VERTEX_SHADER));
+        gl.attachShader(program, createShader(fsSource, gl.FRAGMENT_SHADER));
         gl.linkProgram(program);
 
         if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-          throw new Error('Program link error: ' + gl.getProgramInfoLog(program));
+          throw new Error('Program linking failed');
         }
 
         gl.useProgram(program);
 
-        // Create test geometry (triangle)
+        // Create simple triangle for testing
         const positions = new Float32Array([
-          -0.5, -0.5, 0,
-           0.5, -0.5, 0,
-           0, 0.5, 0
+          -0.5, -0.5, 0.0,
+           0.5, -0.5, 0.0,
+           0.0,  0.5, 0.0
         ]);
 
         const colors = new Float32Array([
-          0, 1, 0,
-          0, 1, 0,
-          0, 1, 0
+          1.0, 0.0, 0.0,
+          0.0, 1.0, 0.0,
+          0.0, 0.0, 1.0
         ]);
 
         const posBuffer = gl.createBuffer();
         gl.bindBuffer(gl.ARRAY_BUFFER, posBuffer);
         gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
-        const posAttrib = gl.getAttribLocation(program, 'position');
-        gl.enableVertexAttribArray(posAttrib);
-        gl.vertexAttribPointer(posAttrib, 3, gl.FLOAT, false, 0, 0);
+
+        const posLoc = gl.getAttribLocation(program, 'position');
+        gl.enableVertexAttribArray(posLoc);
+        gl.vertexAttribPointer(posLoc, 3, gl.FLOAT, false, 0, 0);
 
         const colBuffer = gl.createBuffer();
         gl.bindBuffer(gl.ARRAY_BUFFER, colBuffer);
         gl.bufferData(gl.ARRAY_BUFFER, colors, gl.STATIC_DRAW);
-        const colAttrib = gl.getAttribLocation(program, 'color');
-        gl.enableVertexAttribArray(colAttrib);
-        gl.vertexAttribPointer(colAttrib, 3, gl.FLOAT, false, 0, 0);
 
-        // Matrix helpers
-        function identity() {
-          return new Float32Array([1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]);
-        }
+        const colLoc = gl.getAttribLocation(program, 'color');
+        gl.enableVertexAttribArray(colLoc);
+        gl.vertexAttribPointer(colLoc, 3, gl.FLOAT, false, 0, 0);
 
-        function perspective(fov, aspect, near, far) {
-          const f = 1 / Math.tan(fov / 2);
-          const nf = 1 / (near - far);
-          return new Float32Array([
-            f/aspect, 0, 0, 0,
-            0, f, 0, 0,
-            0, 0, (far+near)*nf, -1,
-            0, 0, 2*far*near*nf, 0
-          ]);
-        }
+        // Simple identity matrix
+        const matrix = new Float32Array([
+          1, 0, 0, 0,
+          0, 1, 0, 0,
+          0, 0, 1, 0,
+          0, 0, 0, 1
+        ]);
 
-        const proj = perspective(Math.PI / 4, canvas.width / canvas.height, 0.1, 100);
-        const view = identity();
-        const model = identity();
+        const matLoc = gl.getUniformLocation(program, 'uMatrix');
+        gl.uniformMatrix4fv(matLoc, false, matrix);
 
-        gl.uniformMatrix4fv(gl.getUniformLocation(program, 'projectionMatrix'), false, proj);
-        gl.uniformMatrix4fv(gl.getUniformLocation(program, 'viewMatrix'), false, view);
-        gl.uniformMatrix4fv(gl.getUniformLocation(program, 'modelMatrix'), false, model);
-
-        // Fetch splat file
-        messageText.textContent = 'Fetching splat file from S3...';
-        console.log('Fetching:', splatUrl.split('?')[0]);
+        // Fetch splat
+        messageText.textContent = 'Fetching splat file...';
+        console.log('Fetching splat file...');
 
         const response = await fetch(splatUrl);
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
         const arrayBuffer = await response.arrayBuffer();
         const sizeMB = (arrayBuffer.byteLength / 1024 / 1024).toFixed(2);
         console.log('✓ Splat file loaded:', sizeMB, 'MB');
 
-        messageEl.classList.remove('message');
         messageEl.classList.add('success');
-        messageEl.innerHTML = `
-          <h2>✓ Ready!</h2>
-          <p>Splat loaded: ${sizeMB} MB</p>
-        `;
+        messageEl.innerHTML = `<h2>✓ Loaded ${sizeMB} MB</h2><p>Rendering...</p>`;
 
-        // Render loop
+        // Setup rendering
         gl.clearColor(0.1, 0.1, 0.1, 1.0);
         gl.enable(gl.DEPTH_TEST);
-        gl.enable(gl.BLEND);
-        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-
-        let rotation = { x: 0, y: 0 };
-        let isDragging = false;
-        let lastMouse = { x: 0, y: 0 };
-
-        canvas.addEventListener('mousedown', (e) => {
-          isDragging = true;
-          lastMouse = { x: e.clientX, y: e.clientY };
-        });
-
-        canvas.addEventListener('mousemove', (e) => {
-          if (isDragging) {
-            rotation.y += (e.clientX - lastMouse.x) * 0.01;
-            rotation.x += (e.clientY - lastMouse.y) * 0.01;
-            lastMouse = { x: e.clientX, y: e.clientY };
-          }
-        });
-
-        canvas.addEventListener('mouseup', () => {
-          isDragging = false;
-        });
 
         function render() {
           gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
@@ -300,18 +250,15 @@
           requestAnimationFrame(render);
         }
 
+        // Hide overlay and start rendering
         setTimeout(() => {
-          messageEl.style.display = 'none';
+          overlay.style.display = 'none';
           render();
-        }, 2000);
+        }, 1500);
 
       } catch (error) {
-        console.error('Error:', error);
-        messageEl.classList.add('error');
-        messageEl.innerHTML = `
-          <h2>Error</h2>
-          <p>${error.message}</p>
-        `;
+        console.error('Fatal error:', error);
+        messageEl.innerHTML = `<h2>Error</h2><p>${error.message}</p>`;
       }
     }
 
