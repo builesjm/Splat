@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Gaussian Splat Viewer</title>
+  <title>PLY Point Cloud Viewer</title>
   <style>
     * {
       margin: 0;
@@ -14,7 +14,7 @@
     body {
       width: 100%;
       height: 100vh;
-      background: #1a1a1a;
+      background: #0a0a0a;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       overflow: hidden;
     }
@@ -36,32 +36,37 @@
       justify-content: center;
       pointer-events: none;
       z-index: 10;
-      background: rgba(26, 26, 26, 0.9);
+      background: rgba(10, 10, 10, 0.95);
     }
 
     .message {
-      background: rgba(0, 0, 0, 0.85);
+      background: rgba(30, 30, 30, 0.95);
       color: #fff;
-      padding: 32px 40px;
+      padding: 40px 50px;
       border-radius: 12px;
       text-align: center;
       font-size: 16px;
       line-height: 1.6;
       max-width: 500px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
     }
 
     .message h2 {
-      margin-bottom: 12px;
-      font-size: 20px;
+      margin-bottom: 16px;
+      font-size: 24px;
       font-weight: 600;
+    }
+
+    .message p {
+      margin-bottom: 12px;
     }
 
     .loading-spinner {
       display: inline-block;
-      width: 20px;
-      height: 20px;
-      border: 3px solid rgba(255, 255, 255, 0.3);
-      border-top: 3px solid #fff;
+      width: 24px;
+      height: 24px;
+      border: 3px solid rgba(255, 255, 255, 0.2);
+      border-top: 3px solid #00d4ff;
       border-radius: 50%;
       animation: spin 1s linear infinite;
       margin-right: 12px;
@@ -72,8 +77,23 @@
       to { transform: rotate(360deg); }
     }
 
-    .success {
-      background: rgba(34, 197, 94, 0.9);
+    .stats {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      background: rgba(0, 0, 0, 0.7);
+      color: #00d4ff;
+      padding: 16px 20px;
+      border-radius: 8px;
+      font-size: 12px;
+      line-height: 1.8;
+      font-family: 'Courier New', monospace;
+      z-index: 5;
+      border: 1px solid rgba(0, 212, 255, 0.3);
+    }
+
+    .stats div {
+      margin-bottom: 4px;
     }
 
     .controls {
@@ -82,19 +102,18 @@
       right: 20px;
       background: rgba(0, 0, 0, 0.7);
       color: #fff;
-      padding: 14px 18px;
+      padding: 16px 20px;
       border-radius: 8px;
       font-size: 12px;
-      line-height: 1.6;
+      line-height: 1.8;
       z-index: 5;
-      pointer-events: auto;
       border: 1px solid rgba(255, 255, 255, 0.2);
     }
 
     .controls strong {
       display: block;
       margin-bottom: 8px;
-      font-weight: 600;
+      color: #00d4ff;
     }
   </style>
 </head>
@@ -104,33 +123,114 @@
   <div class="overlay" id="overlay">
     <div id="message" class="message">
       <div class="loading-spinner"></div>
-      <h2>Loading Splat...</h2>
-      <p id="message-text">Fetching your 3D model</p>
+      <h2>Loading PLY...</h2>
+      <p id="message-text">Fetching point cloud data</p>
     </div>
+  </div>
+
+  <div class="stats" id="stats" style="display: none;">
+    <div>Points: <span id="stat-points">0</span></div>
+    <div>FPS: <span id="stat-fps">0</span></div>
   </div>
 
   <div class="controls">
     <strong>Controls</strong>
     <div>🖱️ Drag to rotate</div>
-    <div>🔄 Scroll to zoom</div>
+    <div>⌚ Scroll to zoom</div>
+    <div>Right-drag to pan</div>
   </div>
 
   <script>
+    // PLY Parser
+    class PLYParser {
+      static parse(arrayBuffer) {
+        const view = new Uint8Array(arrayBuffer);
+        const text = new TextDecoder().decode(view.slice(0, Math.min(2000, view.length)));
+        
+        const lines = text.split('\n');
+        let headerEnd = 0;
+        let vertexCount = 0;
+        let properties = [];
+
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i].trim();
+          if (line.startsWith('element vertex')) {
+            vertexCount = parseInt(line.split(' ')[2]);
+          } else if (line.startsWith('property')) {
+            const parts = line.split(' ');
+            properties.push({
+              type: parts[1],
+              name: parts[2]
+            });
+          } else if (line === 'end_header') {
+            headerEnd = i;
+            break;
+          }
+        }
+
+        const headerText = lines.slice(0, headerEnd + 1).join('\n');
+        const headerBytes = new TextEncoder().encode(headerText + '\n');
+        const dataStart = headerBytes.length;
+
+        console.log('PLY Header:', { vertexCount, properties: properties.map(p => p.name) });
+
+        // Parse binary data
+        const positions = [];
+        const colors = [];
+        let offset = dataStart;
+
+        for (let i = 0; i < vertexCount; i++) {
+          let x = 0, y = 0, z = 0;
+          let r = 255, g = 255, b = 255;
+
+          for (const prop of properties) {
+            const dv = new DataView(arrayBuffer, offset);
+            
+            if (prop.name === 'x') {
+              x = prop.type === 'float' ? dv.getFloat32(0, true) : dv.getInt32(0, true);
+              offset += prop.type === 'float' ? 4 : 4;
+            } else if (prop.name === 'y') {
+              y = prop.type === 'float' ? dv.getFloat32(0, true) : dv.getInt32(0, true);
+              offset += prop.type === 'float' ? 4 : 4;
+            } else if (prop.name === 'z') {
+              z = prop.type === 'float' ? dv.getFloat32(0, true) : dv.getInt32(0, true);
+              offset += prop.type === 'float' ? 4 : 4;
+            } else if (prop.name === 'red') {
+              r = new Uint8Array(arrayBuffer, offset, 1)[0];
+              offset += 1;
+            } else if (prop.name === 'green') {
+              g = new Uint8Array(arrayBuffer, offset, 1)[0];
+              offset += 1;
+            } else if (prop.name === 'blue') {
+              b = new Uint8Array(arrayBuffer, offset, 1)[0];
+              offset += 1;
+            } else {
+              offset += prop.type === 'float' ? 4 : 1;
+            }
+          }
+
+          positions.push(x, y, z);
+          colors.push(r / 255, g / 255, b / 255);
+        }
+
+        return { positions: new Float32Array(positions), colors: new Float32Array(colors), vertexCount };
+      }
+    }
+
     async function init() {
       const canvas = document.getElementById('canvas');
       const messageEl = document.getElementById('message');
       const messageText = document.getElementById('message-text');
       const overlay = document.getElementById('overlay');
+      const statsEl = document.getElementById('stats');
 
-      const splatUrl = 'https://eclipse-splat-models.s3.us-east-2.amazonaws.com/ACOPOS_Full.splat?response-content-disposition=inline&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Security-Token=IQoJb3JpZ2luX2VjEAoaCXVzLWVhc3QtMiJHMEUCIQCIA40DJfAigQWihi8v1fVjiYe17F%2FSSspQkrZxBTjB9gIgO5OgpBKuE08CXkC%2BTjsj2PL4oDWXXpsi9gKSdT1KdR8qggMI1P%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FARAAGgw0OTc1NTkyNDk5NTAiDGVU92f7bDR60IHWCirWAowVx2epnTcQaGhxTUOFngJPi2heOCUWSmMabIhlhwAmKUXbV0pt%2BpgYjBwbB8X944Vbm6qW2vFjsDccaMsHUFFWWEtO4fCC6lIAUI3O%2FxZljc12z%2BqfziWjKwF83tuRIEVC4tkQR4spU1IijeFimeKVM%2FxJjRlz26hRH%2B7O%2FZ%2BGW806%2B%2BOPseGbf9QjcBdjxNpL9aNTV9CEXekEdwmgp5iUoLKmyrusyACKQQTwBimQTdwphXEA4SUclAAY11K7wo%2BFqaiIbL9CkbiJqFO45IPN8P5gJK0%2FmP5gF1c3CqGfGPEpVe5I6NRl%2BN1q4%2BuPc%2Bl6vA4chti45va3HCRXUouGoMfvg9sA49rYLYFrUAcEOUMlIc90GfJpvoqxxvcMQ8MOytD%2FNs6l%2F0Jqgiv197drjLAlS3LeioE6k7kc%2B4U2kb8s2T6vNzGeHdlWMEATZHx%2FzxashTCFuPjPBjqPAhDMjY%2B7YpIe6gBZKUGKU%2FyEMs1IEWciUDLROl8juMwptQi%2BQ%2FP8r9R2kq%2Fpi%2FLmsICRhgHXcCpXaZTh1K0WQXsEN0NvKWQE5APfWajSz19E2%2Bg2ppgBKzK3s0lUOA363ByT8xOG92Ic3q%2BiCOn4lRDOydNhY2cmsMMbVZqtan6GniYpLAi2TSJY3ojv56e%2B%2FazVGnsQJ4Kdamm%2BSzboGwxxFbYgh4nlyoO3HzPSSt%2BHoCy%2Bqi2ptKyFb2MAlVcg9pLiuAl0edOV%2FSYX9rDWpyR51C2xeBl662LsIyBER%2BHc266aVW9UQW61S2RpYt7r2kIm8XqEaRjeqH%2FLVT6MtqK9tLGwOjBAPuAJwK9GeDM%3D&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=ASIAXHWGXUQPNZL7EG4J%2F20260508%2Fus-east-2%2Fs3%2Faws4_request&X-Amz-Date=20260508T182543Z&X-Amz-Expires=7200&X-Amz-SignedHeaders=host&X-Amz-Signature=7f000d243005a6d54910d20341387c3185be1acb71652a1e647f82fc80abcc33';
+      const plyUrl = 'https://eclipse-splat-models.s3.us-east-2.amazonaws.com/ACOPOS_Demo_Cell_Full.ply?response-content-disposition=inline&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Security-Token=IQoJb3JpZ2luX2VjEAsaCXVzLWVhc3QtMiJGMEQCIEZ4f01GBKghTxmS1a68TZ%2ByCIM6nfyQtP3a%2BFbJ6McqAiBK%2Bl54rTD03kQWauhm7TYeqRjPU%2F67sxp7qaSREWDJ2iqCAwjU%2F%2F%2F%2F%2F%2F%2F%2F%2F%2F8BEAAaDDQ5NzU1OTI0OTk1MCIM8e3h4sbBHT6do92wKtYCX509INMMkvaLA9FEuKNCmMU65dxD4RQS%2FTeAFrZfqusV2yaP2QysCWSrpFH7AJas7e41qg8so6jHBrFBJwyMoJN5t7DoaKcla96nfXqFmwXqoXKVOnYcr9yPMWY8m433hT%2BlFtHWCU62%2Fyk1KRDI4ZlVMwYW0VOzf435UTOl82l5wW8tLsCFUy4FgwFLywT9WRj2jZVZR%2FRO5o3adHJRbwWzh8af%2FxnIWYRfv%2B%2FN5X3X57CQnojRqgE418iKLFkeFY6TIelYUB8IHa0VDhSDlp8z2mIFhD3LsiF3yDw6lEfa5ozZa2lMxQBQ87mSKlClQtYF49zULOFyidTW9sVqCKLMHwPn2YfNAXgtv08DOLgraZ0%2BXF%2FKhPWvVH0ocLQXhS4ZS3RTsnJxJC6yVVrTJXBXldgoMIB2z5xMaLmFb%2B0%2FHDWSIb7ZpO43Oert%2BYDbmhV0yg%2FRMIW4%2BM8GOpAC2ZR%2FcXd8KrXXqVvcRLBya%2B3PtvMTRKnErOYQQsugSB8IfwtDR6UftG%2BBWmCR2I7iFzlaYUSNocMEUfbJaAbhoJ2FJclJU5%2FXCKxIczc9I4VuS8ver5k0XavUU9oz%2Fu6P1BS2H7kYTZrmttJH4MPsRpNiaje4WW%2BSypAhWogxGx%2BOeILgBSmBr%2FekMHiXAzhuqd4Zx8ft3yurTiAzgiZKh6bm390LfPvSJcea340gpMGIOaPI0%2FZetrKrbmJFxZmElFbHKtArd6VTs7gouU3z%2BIilu5BV%2BgAMNwjRCOzDomvdBCMDy7ydwQjKiNtu6NSQUZ8FCOvUVpVdkqnx422RWUDFpai3UvJorM5O2Zqh65Q%3D&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=ASIAXHWGXUQPLGIUYX7Q%2F20260508%2Fus-east-2%2Fs3%2Faws4_request&X-Amz-Date=20260508T184507Z&X-Amz-Expires=7200&X-Amz-SignedHeaders=host&X-Amz-Signature=3f42aeddc71836e6fd06a4de71997a7f88aee733a86fcd46f1286552f3adcb2c';
 
       try {
-        console.log('Initializing splat viewer...');
+        console.log('Initializing PLY viewer...');
 
         const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
         if (!gl) throw new Error('WebGL not supported');
-
-        console.log('WebGL context created');
 
         function resizeCanvas() {
           canvas.width = window.innerWidth;
@@ -140,7 +240,7 @@
         resizeCanvas();
         window.addEventListener('resize', resizeCanvas);
 
-        // Simple vertex shader
+        // Shaders
         const vsSource = `
           attribute vec3 position;
           attribute vec3 color;
@@ -149,18 +249,19 @@
           
           void main() {
             gl_Position = uMatrix * vec4(position, 1.0);
-            gl_PointSize = 4.0;
+            gl_PointSize = 2.5;
             vColor = color;
           }
         `;
 
-        // Simple fragment shader
         const fsSource = `
           precision lowp float;
           varying vec3 vColor;
           
           void main() {
-            gl_FragColor = vec4(vColor, 1.0);
+            float dist = length(gl_PointCoord - vec2(0.5, 0.5));
+            if (dist > 0.5) discard;
+            gl_FragColor = vec4(vColor, 0.8);
           }
         `;
 
@@ -169,8 +270,7 @@
           gl.shaderSource(shader, source);
           gl.compileShader(shader);
           if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-            console.error('Shader error:', gl.getShaderInfoLog(shader));
-            throw new Error('Shader compilation failed');
+            throw new Error('Shader: ' + gl.getShaderInfoLog(shader));
           }
           return shader;
         }
@@ -179,26 +279,25 @@
         gl.attachShader(program, createShader(vsSource, gl.VERTEX_SHADER));
         gl.attachShader(program, createShader(fsSource, gl.FRAGMENT_SHADER));
         gl.linkProgram(program);
-
         if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-          throw new Error('Program linking failed');
+          throw new Error('Program: ' + gl.getProgramInfoLog(program));
         }
-
         gl.useProgram(program);
 
-        // Create simple triangle for testing
-        const positions = new Float32Array([
-          -0.5, -0.5, 0.0,
-           0.5, -0.5, 0.0,
-           0.0,  0.5, 0.0
-        ]);
+        // Fetch and parse PLY
+        messageText.textContent = 'Fetching PLY file...';
+        const response = await fetch(plyUrl);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
-        const colors = new Float32Array([
-          1.0, 0.0, 0.0,
-          0.0, 1.0, 0.0,
-          0.0, 0.0, 1.0
-        ]);
+        const arrayBuffer = await response.arrayBuffer();
+        const sizeMB = (arrayBuffer.byteLength / 1024 / 1024).toFixed(2);
+        
+        messageText.textContent = 'Parsing point cloud...';
+        const { positions, colors, vertexCount } = PLYParser.parse(arrayBuffer);
+        
+        console.log('✓ PLY loaded:', sizeMB, 'MB -', vertexCount, 'points');
 
+        // Create buffers
         const posBuffer = gl.createBuffer();
         gl.bindBuffer(gl.ARRAY_BUFFER, posBuffer);
         gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
@@ -215,49 +314,93 @@
         gl.enableVertexAttribArray(colLoc);
         gl.vertexAttribPointer(colLoc, 3, gl.FLOAT, false, 0, 0);
 
-        // Simple identity matrix
-        const matrix = new Float32Array([
-          1, 0, 0, 0,
-          0, 1, 0, 0,
-          0, 0, 1, 0,
-          0, 0, 0, 1
-        ]);
-
         const matLoc = gl.getUniformLocation(program, 'uMatrix');
-        gl.uniformMatrix4fv(matLoc, false, matrix);
 
-        // Fetch splat
-        messageText.textContent = 'Fetching splat file...';
-        console.log('Fetching splat file...');
+        // Camera and interaction
+        let rotation = { x: 0, y: 0 };
+        let zoom = 2.0;
+        let pan = { x: 0, y: 0 };
+        let isDragging = false;
+        let lastMouse = { x: 0, y: 0 };
 
-        const response = await fetch(splatUrl);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        canvas.addEventListener('mousedown', (e) => {
+          isDragging = true;
+          lastMouse = { x: e.clientX, y: e.clientY };
+        });
 
-        const arrayBuffer = await response.arrayBuffer();
-        const sizeMB = (arrayBuffer.byteLength / 1024 / 1024).toFixed(2);
-        console.log('✓ Splat file loaded:', sizeMB, 'MB');
+        canvas.addEventListener('mousemove', (e) => {
+          if (isDragging) {
+            const dx = e.clientX - lastMouse.x;
+            const dy = e.clientY - lastMouse.y;
+            
+            if (e.buttons === 1) {
+              rotation.y += dx * 0.01;
+              rotation.x += dy * 0.01;
+            } else if (e.buttons === 2) {
+              pan.x += dx * 0.005;
+              pan.y -= dy * 0.005;
+            }
+            lastMouse = { x: e.clientX, y: e.clientY };
+          }
+        });
 
-        messageEl.classList.add('success');
-        messageEl.innerHTML = `<h2>✓ Loaded ${sizeMB} MB</h2><p>Rendering...</p>`;
+        canvas.addEventListener('mouseup', () => { isDragging = false; });
 
-        // Setup rendering
-        gl.clearColor(0.1, 0.1, 0.1, 1.0);
-        gl.enable(gl.DEPTH_TEST);
+        canvas.addEventListener('wheel', (e) => {
+          e.preventDefault();
+          zoom *= Math.exp(e.deltaY * -0.001);
+          zoom = Math.max(0.1, Math.min(10, zoom));
+        });
+
+        canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+        function makeMatrix() {
+          const cos_x = Math.cos(rotation.x);
+          const sin_x = Math.sin(rotation.x);
+          const cos_y = Math.cos(rotation.y);
+          const sin_y = Math.sin(rotation.y);
+
+          return new Float32Array([
+            cos_y, 0, sin_y, 0,
+            sin_x * sin_y, cos_x, -sin_x * cos_y, 0,
+            -cos_x * sin_y, sin_x, cos_x * cos_y, 0,
+            pan.x, pan.y, -zoom, 1
+          ]);
+        }
+
+        gl.clearColor(0.05, 0.05, 0.05, 1.0);
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+        let frameCount = 0;
+        let lastTime = Date.now();
 
         function render() {
-          gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-          gl.drawArrays(gl.TRIANGLES, 0, 3);
+          gl.clear(gl.COLOR_BUFFER_BIT);
+          gl.uniformMatrix4fv(matLoc, false, makeMatrix());
+          gl.drawArrays(gl.POINTS, 0, vertexCount);
+
+          frameCount++;
+          const now = Date.now();
+          if (now - lastTime >= 1000) {
+            document.getElementById('stat-fps').textContent = frameCount;
+            frameCount = 0;
+            lastTime = now;
+          }
+
           requestAnimationFrame(render);
         }
 
-        // Hide overlay and start rendering
+        // Show stats and hide overlay
         setTimeout(() => {
           overlay.style.display = 'none';
+          statsEl.style.display = 'block';
+          document.getElementById('stat-points').textContent = vertexCount.toLocaleString();
           render();
-        }, 1500);
+        }, 500);
 
       } catch (error) {
-        console.error('Fatal error:', error);
+        console.error('Error:', error);
         messageEl.innerHTML = `<h2>Error</h2><p>${error.message}</p>`;
       }
     }
