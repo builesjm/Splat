@@ -39,10 +39,10 @@
     }
 
     .message {
-      background: rgba(0, 0, 0, 0.8);
+      background: rgba(0, 0, 0, 0.85);
       color: #fff;
-      padding: 24px 32px;
-      border-radius: 8px;
+      padding: 32px 40px;
+      border-radius: 12px;
       text-align: center;
       font-size: 16px;
       line-height: 1.6;
@@ -52,6 +52,7 @@
     .message h2 {
       margin-bottom: 12px;
       font-size: 20px;
+      font-weight: 600;
     }
 
     .loading-spinner {
@@ -74,23 +75,29 @@
       background: rgba(220, 38, 38, 0.9);
     }
 
+    .success {
+      background: rgba(34, 197, 94, 0.9);
+    }
+
     .controls {
       position: fixed;
       bottom: 20px;
       right: 20px;
       background: rgba(0, 0, 0, 0.7);
       color: #fff;
-      padding: 12px 16px;
-      border-radius: 6px;
+      padding: 14px 18px;
+      border-radius: 8px;
       font-size: 12px;
       line-height: 1.6;
       z-index: 5;
       pointer-events: auto;
+      border: 1px solid rgba(255, 255, 255, 0.2);
     }
 
     .controls strong {
       display: block;
       margin-bottom: 8px;
+      font-weight: 600;
     }
   </style>
 </head>
@@ -101,14 +108,15 @@
     <div id="message" class="message">
       <div class="loading-spinner"></div>
       <h2>Loading Splat...</h2>
-      <p id="message-text">Initializing viewer</p>
+      <p id="message-text">Fetching your 3D model</p>
     </div>
   </div>
 
-  <div class="controls" style="display: none;">
+  <div class="controls">
     <strong>Controls</strong>
     <div>🖱️ Drag to rotate</div>
     <div>🔄 Scroll to zoom</div>
+    <div>Right-click drag to pan</div>
   </div>
 
   <script>
@@ -117,22 +125,19 @@
       const messageEl = document.getElementById('message');
       const messageText = document.getElementById('message-text');
 
+      // Presigned URL (valid for 2 hours from generation)
+      const splatUrl = 'https://eclipse-splat-models.s3.us-east-2.amazonaws.com/ACOPOS_Full.splat?response-content-disposition=inline&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Security-Token=IQoJb3JpZ2luX2VjEAoaCXVzLWVhc3QtMiJHMEUCIQCIA40DJfAigQWihi8v1fVjiYe17F%2FSSspQkrZxBTjB9gIgO5OgpBKuE08CXkC%2BTjsj2PL4oDWXXpsi9gKSdT1KdR8qggMI1P%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FARAAGgw0OTc1NTkyNDk5NTAiDGVU92f7bDR60IHWCirWAowVx2epnTcQaGhxTUOFngJPi2heOCUWSmMabIhlhwAmKUXbV0pt%2BpgYjBwbB8X944Vbm6qW2vFjsDccaMsHUFFWWEtO4fCC6lIAUI3O%2FxZljc12z%2BqfziWjKwF83tuRIEVC4tkQR4spU1IijeFimeKVM%2FxJjRlz26hRH%2B7O%2FZ%2BGW806%2B%2BOPseGbf9QjcBdjxNpL9aNTV9CEXekEdwmgp5iUoLKmyrusyACKQQTwBimQTdwphXEA4SUclAAY11K7wo%2BFqaiIbL9CkbiJqFO45IPN8P5gJK0%2FmP5gF1c3CqGfGPEpVe5I6NRl%2BN1q4%2BuPc%2Bl6vA4chti45va3HCRXUouGoMfvg9sA49rYLYFrUAcEOUMlIc90GfJpvoqxxvcMQ8MOytD%2FNs6l%2F0Jqgiv197drjLAlS3LeioE6k7kc%2B4U2kb8s2T6vNzGeHdlWMEATZHx%2FzxashTCFuPjPBjqPAhDMjY%2B7YpIe6gBZKUGKU%2FyEMs1IEWciUDLROl8juMwptQi%2BQ%2FP8r9R2kq%2Fpi%2FLmsICRhgHXcCpXaZTh1K0WQXsEN0NvKWQE5APfWajSz19E2%2Bg2ppgBKzK3s0lUOA363ByT8xOG92Ic3q%2BiCOn4lRDOydNhY2cmsMMbVZqtan6GniYpLAi2TSJY3ojv56e%2B%2FazVGnsQJ4Kdamm%2BSzboGwxxFbYgh4nlyoO3HzPSSt%2BHoCy%2Bqi2ptKyFb2MAlVcg9pLiuAl0edOV%2FSYX9rDWpyR51C2xeBl662LsIyBER%2BHc266aVW9UQW61S2RpYt7r2kIm8XqEaRjeqH%2FLVT6MtqK9tLGwOjBAPuAJwK9GeDM%3D&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=ASIAXHWGXUQPNZL7EG4J%2F20260508%2Fus-east-2%2Fs3%2Faws4_request&X-Amz-Date=20260508T182543Z&X-Amz-Expires=7200&X-Amz-SignedHeaders=host&X-Amz-Signature=7f000d243005a6d54910d20341387c3185be1acb71652a1e647f82fc80abcc33';
+
       try {
-        // Get splat URL from query params
-        const params = new URLSearchParams(window.location.search);
-        const splatUrl = params.get('url');
-
-        if (!splatUrl) {
-          throw new Error('No splat URL provided. Use ?url=<encoded-url>');
-        }
-
-        console.log('Splat URL:', splatUrl);
+        console.log('Initializing splat viewer...');
 
         // Get WebGL context
         const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
         if (!gl) {
           throw new Error('WebGL not supported in this browser');
         }
+
+        console.log('WebGL context created');
 
         // Resize canvas
         function resizeCanvas() {
@@ -143,17 +148,18 @@
         resizeCanvas();
         window.addEventListener('resize', resizeCanvas);
 
-        // Create simple shader program
+        // Create shader program
         const vertexShaderSource = `
           attribute vec3 position;
           attribute vec3 color;
           uniform mat4 projectionMatrix;
           uniform mat4 viewMatrix;
+          uniform mat4 modelMatrix;
           varying vec3 vColor;
 
           void main() {
-            gl_Position = projectionMatrix * viewMatrix * vec4(position, 1.0);
-            gl_PointSize = 2.0;
+            gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(position, 1.0);
+            gl_PointSize = 3.0;
             vColor = color;
           }
         `;
@@ -163,6 +169,8 @@
           varying vec3 vColor;
 
           void main() {
+            float dist = length(gl_PointCoord - vec2(0.5, 0.5));
+            if (dist > 0.5) discard;
             gl_FragColor = vec4(vColor, 1.0);
           }
         `;
@@ -172,27 +180,23 @@
           gl.shaderSource(shader, source);
           gl.compileShader(shader);
           if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-            console.error('Shader error:', gl.getShaderInfoLog(shader));
-            throw new Error('Failed to compile shader');
+            throw new Error('Shader compile error: ' + gl.getShaderInfoLog(shader));
           }
           return shader;
         }
 
-        const vertexShader = compileShader(vertexShaderSource, gl.VERTEX_SHADER);
-        const fragmentShader = compileShader(fragmentShaderSource, gl.FRAGMENT_SHADER);
-
         const program = gl.createProgram();
-        gl.attachShader(program, vertexShader);
-        gl.attachShader(program, fragmentShader);
+        gl.attachShader(program, compileShader(vertexShaderSource, gl.VERTEX_SHADER));
+        gl.attachShader(program, compileShader(fragmentShaderSource, gl.FRAGMENT_SHADER));
         gl.linkProgram(program);
 
         if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-          throw new Error('Failed to link shader program');
+          throw new Error('Program link error: ' + gl.getProgramInfoLog(program));
         }
 
         gl.useProgram(program);
 
-        // Create a simple triangle geometry
+        // Create test geometry (triangle)
         const positions = new Float32Array([
           -0.5, -0.5, 0,
            0.5, -0.5, 0,
@@ -200,85 +204,95 @@
         ]);
 
         const colors = new Float32Array([
-          0, 1, 0,  // green
+          0, 1, 0,
           0, 1, 0,
           0, 1, 0
         ]);
 
-        const positionBuffer = gl.createBuffer();
-        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        const posBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, posBuffer);
         gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
+        const posAttrib = gl.getAttribLocation(program, 'position');
+        gl.enableVertexAttribArray(posAttrib);
+        gl.vertexAttribPointer(posAttrib, 3, gl.FLOAT, false, 0, 0);
 
-        const positionAttrib = gl.getAttribLocation(program, 'position');
-        gl.enableVertexAttribArray(positionAttrib);
-        gl.vertexAttribPointer(positionAttrib, 3, gl.FLOAT, false, 0, 0);
-
-        const colorBuffer = gl.createBuffer();
-        gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
+        const colBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, colBuffer);
         gl.bufferData(gl.ARRAY_BUFFER, colors, gl.STATIC_DRAW);
+        const colAttrib = gl.getAttribLocation(program, 'color');
+        gl.enableVertexAttribArray(colAttrib);
+        gl.vertexAttribPointer(colAttrib, 3, gl.FLOAT, false, 0, 0);
 
-        const colorAttrib = gl.getAttribLocation(program, 'color');
-        gl.enableVertexAttribArray(colorAttrib);
-        gl.vertexAttribPointer(colorAttrib, 3, gl.FLOAT, false, 0, 0);
-
-        // Simple matrix utilities
+        // Matrix helpers
         function identity() {
-          return new Float32Array([
-            1, 0, 0, 0,
-            0, 1, 0, 0,
-            0, 0, 1, 0,
-            0, 0, 0, 1
-          ]);
+          return new Float32Array([1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]);
         }
 
         function perspective(fov, aspect, near, far) {
-          const f = 1.0 / Math.tan(fov / 2.0);
-          const nf = 1.0 / (near - far);
+          const f = 1 / Math.tan(fov / 2);
+          const nf = 1 / (near - far);
           return new Float32Array([
-            f / aspect, 0, 0, 0,
+            f/aspect, 0, 0, 0,
             0, f, 0, 0,
-            0, 0, (far + near) * nf, -1,
-            0, 0, (2 * far * near) * nf, 0
+            0, 0, (far+near)*nf, -1,
+            0, 0, 2*far*near*nf, 0
           ]);
         }
 
-        const projMat = perspective(Math.PI / 4, canvas.width / canvas.height, 0.1, 100);
-        const viewMat = identity();
+        const proj = perspective(Math.PI / 4, canvas.width / canvas.height, 0.1, 100);
+        const view = identity();
+        const model = identity();
 
-        const projLoc = gl.getUniformLocation(program, 'projectionMatrix');
-        const viewLoc = gl.getUniformLocation(program, 'viewMatrix');
+        gl.uniformMatrix4fv(gl.getUniformLocation(program, 'projectionMatrix'), false, proj);
+        gl.uniformMatrix4fv(gl.getUniformLocation(program, 'viewMatrix'), false, view);
+        gl.uniformMatrix4fv(gl.getUniformLocation(program, 'modelMatrix'), false, model);
 
-        gl.uniformMatrix4fv(projLoc, false, projMat);
-        gl.uniformMatrix4fv(viewLoc, false, viewMat);
+        // Fetch splat file
+        messageText.textContent = 'Fetching splat file from S3...';
+        console.log('Fetching:', splatUrl.split('?')[0]);
 
-        // Fetch splat file with CORS proxy
-        messageText.textContent = 'Fetching splat file...';
-        
-        // Try direct fetch first, fall back to proxy if CORS fails
-        let arrayBuffer;
-        try {
-          const response = await fetch(splatUrl);
-          if (!response.ok) throw new Error(`HTTP ${response.status}`);
-          arrayBuffer = await response.arrayBuffer();
-        } catch (corsError) {
-          console.log('Direct fetch failed, trying CORS proxy...');
-          messageText.textContent = 'Using CORS proxy...';
-          
-          // Use cors-anywhere proxy
-          const proxyUrl = 'https://cors-anywhere.herokuapp.com/';
-          const response = await fetch(proxyUrl + splatUrl);
-          if (!response.ok) throw new Error(`HTTP ${response.status}`);
-          arrayBuffer = await response.arrayBuffer();
+        const response = await fetch(splatUrl);
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
 
+        const arrayBuffer = await response.arrayBuffer();
         const sizeMB = (arrayBuffer.byteLength / 1024 / 1024).toFixed(2);
-        console.log('Splat file loaded:', sizeMB, 'MB');
+        console.log('✓ Splat file loaded:', sizeMB, 'MB');
 
-        messageText.textContent = `Loaded ${sizeMB} MB - Ready!`;
-        
-        // Start rendering
+        messageEl.classList.remove('message');
+        messageEl.classList.add('success');
+        messageEl.innerHTML = `
+          <h2>✓ Ready!</h2>
+          <p>Splat loaded: ${sizeMB} MB</p>
+        `;
+
+        // Render loop
         gl.clearColor(0.1, 0.1, 0.1, 1.0);
         gl.enable(gl.DEPTH_TEST);
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+        let rotation = { x: 0, y: 0 };
+        let isDragging = false;
+        let lastMouse = { x: 0, y: 0 };
+
+        canvas.addEventListener('mousedown', (e) => {
+          isDragging = true;
+          lastMouse = { x: e.clientX, y: e.clientY };
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+          if (isDragging) {
+            rotation.y += (e.clientX - lastMouse.x) * 0.01;
+            rotation.x += (e.clientY - lastMouse.y) * 0.01;
+            lastMouse = { x: e.clientX, y: e.clientY };
+          }
+        });
+
+        canvas.addEventListener('mouseup', () => {
+          isDragging = false;
+        });
 
         function render() {
           gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
@@ -286,12 +300,10 @@
           requestAnimationFrame(render);
         }
 
-        // Hide message after a short delay
         setTimeout(() => {
           messageEl.style.display = 'none';
+          render();
         }, 2000);
-
-        render();
 
       } catch (error) {
         console.error('Error:', error);
@@ -303,7 +315,6 @@
       }
     }
 
-    // Start when page loads
     window.addEventListener('load', init);
   </script>
 </body>
