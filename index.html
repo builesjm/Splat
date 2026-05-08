@@ -46,6 +46,7 @@
       text-align: center;
       font-size: 16px;
       line-height: 1.6;
+      max-width: 500px;
     }
 
     .message h2 {
@@ -250,15 +251,26 @@
         gl.uniformMatrix4fv(projLoc, false, projMat);
         gl.uniformMatrix4fv(viewLoc, false, viewMat);
 
-        // Fetch splat file
+        // Fetch splat file with CORS proxy
         messageText.textContent = 'Fetching splat file...';
         
-        const response = await fetch(splatUrl);
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        // Try direct fetch first, fall back to proxy if CORS fails
+        let arrayBuffer;
+        try {
+          const response = await fetch(splatUrl);
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          arrayBuffer = await response.arrayBuffer();
+        } catch (corsError) {
+          console.log('Direct fetch failed, trying CORS proxy...');
+          messageText.textContent = 'Using CORS proxy...';
+          
+          // Use cors-anywhere proxy
+          const proxyUrl = 'https://cors-anywhere.herokuapp.com/';
+          const response = await fetch(proxyUrl + splatUrl);
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          arrayBuffer = await response.arrayBuffer();
         }
 
-        const arrayBuffer = await response.arrayBuffer();
         const sizeMB = (arrayBuffer.byteLength / 1024 / 1024).toFixed(2);
         console.log('Splat file loaded:', sizeMB, 'MB');
 
